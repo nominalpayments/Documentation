@@ -1,0 +1,890 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "NominalPayments",
+    "description": "\n## Quickstart\n\n1. **Authenticate**: obtain your API key from your NominalPayments manager.\n2. **Create a payment**: POST to `/v1/payments/process` with the required fields.\n3. **Redirect the user** (fund only): redirect to `checkout_url` from the response, or use `api_only: true` for headless mode.\n4. **Listen for webhooks**: implement an endpoint at your `notify_endpoint` to receive callbacks on payment state changes. Verify the `X-Signature` header on every request.\n5. **Poll if needed**: optionally poll `GET /v1/payments/{ref_num}/resolve` for real-time status.\n\nExample (Fund, UPI):\n```json\n{\n  \"value\": \"1000.00\",\n  \"notify_endpoint\": \"https://merchant.example.com/webhook\",\n  \"iso_ccy\": \"INR\",\n  \"client_ref\": \"order-001\",\n  \"tx_type\": \"fund\",\n  \"processing\": \"direct\",\n  \"channel_code\": \"upi\",\n  \"user_ref\": \"user_9812345678\",\n  \"landing_url\": \"https://merchant.example.com/return\"\n}\n```\n\n---\n\n## Introduction\n\nNominalPayments processes Pay-In (fund) and Pay-Out (disburse) transactions. Supported payment rails for India: UPI, UPI Intent, UPI Paytm (flash), UPI PhonePe (turbo), IMPS, and card acquiring.\n\nAll amounts are passed as decimal strings. The `client_ref` field is your idempotency key — always unique per payment.\n\n---\n\n## Fund (Pay-In) modes\n\n- **Widget** (default): redirect the user to `checkout_url` returned in the response.\n- **Headless / API-only**: set `api_only: true` — no redirect, payment credentials returned directly in `transfer_details`.\n\n---\n\n## Webhook signature verification\n\nEvery webhook sent to your `notify_endpoint` includes an `X-Signature` header.\nThe value is an HMAC-SHA256 or RSA signature of the raw request body. Obtain the verification key from your manager.\n\nNode.js example (HMAC-SHA256):\n```js\nimport { createHmac, timingSafeEqual } from 'node:crypto';\n\nfunction verifyWebhook(rawBody, signatureHeader, secret) {\n  const expected = createHmac('sha256', secret)\n    .update(rawBody)\n    .digest('hex');\n  return timingSafeEqual(\n    Buffer.from(expected),\n    Buffer.from(signatureHeader)\n  );\n}\n```\n\nReturn HTTP **200** to acknowledge. Any other code triggers retries for up to 24 hours.\n\n---\n\n## Payment outcome values\n\n| `outcome` | Meaning |\n|---|---|\n| `pending` | In progress |\n| `settled` | Successfully completed |\n| `settled_partial` | Partially settled |\n| `declined` | Declined or expired |\n| `voided` | Reversed/cancelled |\n| `disputed` | Chargeback initiated |\n| `adjusted` | Amount adjusted |\n\n---\n\n## Error format\n\nAll errors return a unified JSON body:\n```json\n{\n  \"result\": \"fail\",\n  \"issue\": {\n    \"category\": \"bad_request\",\n    \"text\": \"value must be a valid money amount\",\n    \"errors\": {\n      \"value\": [\"value must be a valid money amount\"]\n    }\n  }\n}\n```\n\n| Category | HTTP | Meaning |\n|---|---|---|\n| `bad_request` | 400 | Validation error |\n| `payment_issue` | 400 | Business error (limit, ban, duplicate, …) |\n| `auth_issue` | 401/403 | Authorization error |\n| `server_issue` | 500 | Internal error |\n",
+    "contact": {
+      "url": "https://nominalpayments.app"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api-test.nominalpayments.app/v1",
+      "description": "Staging / Test"
+    },
+    {
+      "url": "https://api.nominalpayments.app/v1",
+      "description": "Production"
+    }
+  ],
+  "tags": [
+    { "name": "Fund", "description": "Pay-In — receive funds from a payer" },
+    { "name": "Disburse", "description": "Pay-Out — send funds to a recipient" },
+    { "name": "Payment Status", "description": "Retrieve and confirm payment state" },
+    { "name": "Partner API", "description": "Balance and account management" }
+  ],
+  "paths": {
+    "/payments/process": {
+      "post": {
+        "summary": "Create payment (fund or disburse)",
+        "description": "Unified endpoint for creating both Pay-In (fund) and Pay-Out (disburse) payments.\n\nSet `tx_type` to `fund` or `disburse` and choose the appropriate `processing` and `channel_code` combination.\n\n**Fund channels:**\n- `direct` + `upi` — standard UPI\n- `direct` + `upi_intent` — UPI Intent deep-link\n- `direct` + `flash` — UPI via Paytm\n- `direct` + `turbo` — UPI via PhonePe\n- `card` — card acquiring (no `channel_code` needed)\n\n**Disburse channels:**\n- `direct` + `upi` — payout to UPI VPA\n- `direct` + `imps` — payout via IMPS (bank account)\n- `card` — payout to card number\n\nFor headless (no-UI) fund: set `api_only: true`. The response will contain `transfer_details` with payment credentials instead of a `checkout_url`.\n\n`client_ref` is your idempotency key (5–64 chars). Reusing an existing key returns the original payment.",
+        "operationId": "createPayment",
+        "tags": ["Fund", "Disburse"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentCreateSchema"
+              },
+              "examples": {
+                "Fund UPI (widget)": {
+                  "summary": "Pay-In via UPI with redirect",
+                  "value": {
+                    "value": "1500.00",
+                    "notify_endpoint": "https://merchant.example.com/webhook",
+                    "iso_ccy": "INR",
+                    "client_ref": "order-20240513-001",
+                    "tx_type": "fund",
+                    "processing": "direct",
+                    "channel_code": "upi",
+                    "user_ref": "user_9812345678",
+                    "user_name": "Rahul Sharma",
+                    "landing_url": "https://merchant.example.com/return",
+                    "fund_details": {
+                      "bank_label": "HDFC Bank",
+                      "payer_full_name": "Rahul Sharma",
+                      "upi_id": "rahul@ybl"
+                    },
+                    "traffic_type": "FTD"
+                  }
+                },
+                "Fund card (acquiring)": {
+                  "summary": "Pay-In via card acquiring",
+                  "value": {
+                    "value": "2000.00",
+                    "notify_endpoint": "https://merchant.example.com/webhook",
+                    "iso_ccy": "INR",
+                    "client_ref": "order-20240513-002",
+                    "tx_type": "fund",
+                    "processing": "card",
+                    "user_ref": "user_9812345678",
+                    "landing_url": "https://merchant.example.com/return",
+                    "fund_details": {
+                      "card_info": {
+                        "card_number": "4111111111111111",
+                        "expiry_month": 12,
+                        "expiry_year": 2027,
+                        "cvv": "123",
+                        "holder_name": "RAHUL SHARMA"
+                      }
+                    }
+                  }
+                },
+                "Fund flash/turbo (UPI Paytm/PhonePe)": {
+                  "summary": "Pay-In via flash (Paytm) or turbo (PhonePe)",
+                  "value": {
+                    "value": "500.00",
+                    "notify_endpoint": "https://merchant.example.com/webhook",
+                    "iso_ccy": "INR",
+                    "client_ref": "order-20240513-003",
+                    "tx_type": "fund",
+                    "processing": "direct",
+                    "channel_code": "flash",
+                    "user_ref": "user_9812345678",
+                    "landing_url": "https://merchant.example.com/return"
+                  }
+                },
+                "Fund API-only (headless)": {
+                  "summary": "Pay-In headless — no redirect, credentials in response",
+                  "value": {
+                    "value": "1000.00",
+                    "notify_endpoint": "https://merchant.example.com/webhook",
+                    "iso_ccy": "INR",
+                    "client_ref": "order-20240513-004",
+                    "tx_type": "fund",
+                    "processing": "direct",
+                    "channel_code": "upi",
+                    "user_ref": "user_9812345678",
+                    "api_only": true
+                  }
+                },
+                "Disburse UPI": {
+                  "summary": "Pay-Out to UPI VPA",
+                  "value": {
+                    "value": "3000.00",
+                    "notify_endpoint": "https://merchant.example.com/webhook",
+                    "iso_ccy": "INR",
+                    "client_ref": "payout-20240513-001",
+                    "tx_type": "disburse",
+                    "processing": "direct",
+                    "channel_code": "upi",
+                    "user_ref": "user_9812345678",
+                    "payout_details": {
+                      "upi_id": "rahul@ybl",
+                      "recipient_name": "Rahul Sharma"
+                    }
+                  }
+                },
+                "Disburse IMPS": {
+                  "summary": "Pay-Out via IMPS (bank account)",
+                  "value": {
+                    "value": "5000.00",
+                    "notify_endpoint": "https://merchant.example.com/webhook",
+                    "iso_ccy": "INR",
+                    "client_ref": "payout-20240513-002",
+                    "tx_type": "disburse",
+                    "processing": "direct",
+                    "channel_code": "imps",
+                    "user_ref": "user_9812345678",
+                    "payout_details": {
+                      "acct_number": "012345678901",
+                      "bank_code": "HDFC0002060",
+                      "recipient_name": "Rahul Sharma"
+                    }
+                  }
+                },
+                "Disburse card": {
+                  "summary": "Pay-Out to card",
+                  "value": {
+                    "value": "2500.00",
+                    "notify_endpoint": "https://merchant.example.com/webhook",
+                    "iso_ccy": "INR",
+                    "client_ref": "payout-20240513-003",
+                    "tx_type": "disburse",
+                    "processing": "card",
+                    "user_ref": "user_9812345678",
+                    "payout_details": {
+                      "card_num": "4111111111111111",
+                      "recipient_name": "Rahul Sharma"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Payment created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentStateSchema"
+                },
+                "examples": {
+                  "pending": {
+                    "summary": "Payment created, awaiting payer",
+                    "value": {
+                      "ref_num": "pay_in_01HX...",
+                      "channel_type": "upi",
+                      "checkout_url": "https://api.nominalpayments.app/payments/pay_in_01HX...",
+                      "client_ref": "order-20240513-001",
+                      "outcome": "pending",
+                      "expires_at": null,
+                      "decline_cause": null,
+                      "charge_amount": "1500.00",
+                      "settled_amount": null,
+                      "iso_currency": "INR",
+                      "opened_at": "2024-05-13T10:00:00.000Z",
+                      "closed_at": null,
+                      "transfer_details": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error or business rule violation",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorSchema" },
+                "examples": {
+                  "bad_request": {
+                    "value": {
+                      "result": "fail",
+                      "issue": {
+                        "category": "bad_request",
+                        "text": "value must be a valid money amount",
+                        "errors": { "value": ["value must be a valid money amount"] }
+                      }
+                    }
+                  },
+                  "duplicate": {
+                    "summary": "Duplicate client_ref",
+                    "value": {
+                      "result": "fail",
+                      "issue": {
+                        "category": "payment_issue",
+                        "text": "Payment with client_ref (order-001) already exists.",
+                        "errors": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized — missing or invalid token",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorSchema" },
+                "examples": {
+                  "example": {
+                    "value": {
+                      "result": "fail",
+                      "issue": {
+                        "category": "auth_issue",
+                        "text": "Merchant account is disabled or token is invalid.",
+                        "errors": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorSchema" },
+                "examples": {
+                  "example": {
+                    "value": {
+                      "result": "fail",
+                      "issue": {
+                        "category": "server_issue",
+                        "text": "Internal error. Please try again later.",
+                        "errors": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "Bearer": [] }],
+        "callbacks": {
+          "onPaymentStateChange": {
+            "{$request.body#/notify_endpoint}": {
+              "post": {
+                "summary": "Webhook — payment state changed",
+                "description": "Sent to `notify_endpoint` whenever the payment outcome changes.\n\nThe body is the same `PaymentStateSchema` object as returned by `/resolve`.\n\n**Signature verification (mandatory):**\nVerify the `X-Signature` header against the raw request body using the key provided by your manager.\n\nNode.js example (HMAC-SHA256):\n```js\nimport { createHmac, timingSafeEqual } from 'node:crypto';\n\nfunction verifyWebhook(rawBody, signatureHeader, secret) {\n  const expected = createHmac('sha256', secret)\n    .update(rawBody)\n    .digest('hex');\n  return timingSafeEqual(\n    Buffer.from(expected),\n    Buffer.from(signatureHeader)\n  );\n}\n```\n\nReturn **HTTP 200** to acknowledge. Any other status code triggers retries for up to 24 hours.",
+                "parameters": [
+                  {
+                    "in": "header",
+                    "name": "X-Signature",
+                    "description": "HMAC-SHA256 or RSA signature of the raw request body. Obtain the verification key from your manager.",
+                    "schema": { "type": "string" },
+                    "required": true
+                  }
+                ],
+                "requestBody": {
+                  "$ref": "#/components/requestBodies/WebhookPaymentStateBody"
+                },
+                "responses": {
+                  "200": { "description": "Webhook acknowledged" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payments/{ref_num}/resolve": {
+      "get": {
+        "summary": "Get payment status",
+        "description": "Returns the current state of a payment by its `ref_num`.\n\nUse `is_completed` / `outcome` to determine the final state. Poll this endpoint if you have not received a webhook.\n\n`settled_amount` reflects the actual credited amount after fees; it may differ from `charge_amount`.",
+        "operationId": "resolvePayment",
+        "tags": ["Payment Status"],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ref_num",
+            "description": "NominalPayments payment ID (e.g. `pay_in_01HX...`)",
+            "required": true,
+            "schema": { "type": "string", "example": "pay_in_01HX..." }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current payment state",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PaymentStateSchema" },
+                "examples": {
+                  "pending": {
+                    "summary": "Payment still awaiting payer",
+                    "value": {
+                      "ref_num": "pay_in_01HX...",
+                      "channel_type": "upi",
+                      "checkout_url": "https://api.nominalpayments.app/payments/pay_in_01HX...",
+                      "client_ref": "order-20240513-001",
+                      "outcome": "pending",
+                      "expires_at": "2024-05-13T10:30:00.000Z",
+                      "decline_cause": null,
+                      "charge_amount": "1500.00",
+                      "settled_amount": null,
+                      "iso_currency": "INR",
+                      "transfer_details": { "upi_account": "merchant@ybl" },
+                      "opened_at": "2024-05-13T10:00:00.000Z",
+                      "closed_at": null
+                    }
+                  },
+                  "settled": {
+                    "summary": "Payment successfully settled",
+                    "value": {
+                      "ref_num": "pay_in_01HX...",
+                      "outcome": "settled",
+                      "charge_amount": "1500.00",
+                      "settled_amount": "1455.00",
+                      "iso_currency": "INR",
+                      "opened_at": "2024-05-13T10:00:00.000Z",
+                      "closed_at": "2024-05-13T10:12:34.000Z",
+                      "decline_cause": null
+                    }
+                  },
+                  "declined": {
+                    "summary": "Payment declined or expired",
+                    "value": {
+                      "ref_num": "pay_in_01HX...",
+                      "outcome": "declined",
+                      "charge_amount": "1500.00",
+                      "settled_amount": null,
+                      "decline_cause": "Payment expired without confirmation",
+                      "opened_at": "2024-05-13T10:00:00.000Z",
+                      "closed_at": "2024-05-13T10:30:00.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Payment not found" }
+        },
+        "security": [{ "Bearer": [] }]
+      }
+    },
+    "/payments/{ref_num}/status": {
+      "get": {
+        "summary": "Get payment status (universal)",
+        "description": "Same as `/resolve` but works across all brands within the system. Use when `ref_num` may belong to any brand.",
+        "operationId": "getPaymentStatus",
+        "tags": ["Payment Status"],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ref_num",
+            "description": "Payment ID",
+            "required": true,
+            "schema": { "type": "string", "example": "pay_in_01HX..." }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current payment state",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PaymentStateSchema" }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Payment not found" }
+        },
+        "security": [{ "Bearer": [] }]
+      }
+    },
+    "/payments/{ref_num}/mark_done": {
+      "post": {
+        "summary": "Mark payment as paid (payer confirmation)",
+        "description": "Called when the payer has confirmed the payment on their side (e.g. submitted UTR or tapped \"I have paid\"). Transitions the payment for review.\n\nReturns the current payment state (same shape as `/resolve`).",
+        "operationId": "markPaymentDone",
+        "tags": ["Payment Status"],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ref_num",
+            "description": "Payment ID",
+            "required": true,
+            "schema": { "type": "string", "example": "pay_in_01HX..." }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current payment state after marking as done",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PaymentStateSchema" }
+              }
+            }
+          },
+          "400": { "description": "Payment is already in a terminal state" },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Payment not found" }
+        },
+        "security": [{ "Bearer": [] }]
+      }
+    },
+    "/payments/{ref_num}/attach_proof": {
+      "post": {
+        "summary": "Attach payment proof (UTR + receipt)",
+        "description": "Upload a payment receipt and/or UTR number as proof of payment. Supported file types: JPG, PNG, PDF, BMP.\n\nRequest must be `multipart/form-data`.",
+        "operationId": "attachPaymentProof",
+        "tags": ["Payment Status"],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ref_num",
+            "description": "Payment ID",
+            "required": true,
+            "schema": { "type": "string", "example": "pay_in_01HX..." }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "UTR": {
+                    "type": "string",
+                    "description": "12-digit Unique Transaction Reference number",
+                    "pattern": "^[0-9]{12}$",
+                    "example": "123456789012"
+                  },
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Receipt image or PDF (JPG, PNG, PDF, BMP)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Proof accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "acknowledged": { "type": "boolean", "example": true }
+                  },
+                  "required": ["acknowledged"]
+                },
+                "examples": {
+                  "success": { "value": { "acknowledged": true } }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing UTR or unsupported file type" },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Payment not found" }
+        },
+        "security": [{ "Bearer": [] }]
+      }
+    },
+    "/partner/ledger": {
+      "get": {
+        "summary": "Get partner balance",
+        "description": "Returns the current account balance.\n\nPass `?account_type=CRYPTO_TRANSIT` to retrieve the crypto (USDT) balance. Default returns the P2P/fiat balance.",
+        "operationId": "getPartnerLedger",
+        "tags": ["Partner API"],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "account_type",
+            "description": "Account type to query. Default: P2P fiat balance.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["CRYPTO_TRANSIT"],
+              "example": "CRYPTO_TRANSIT"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current balance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "balance": {
+                      "type": "string",
+                      "description": "Current balance in `iso_ccy`",
+                      "example": "48250.00"
+                    },
+                    "iso_ccy": {
+                      "type": "string",
+                      "description": "ISO 4217 currency code",
+                      "example": "INR"
+                    }
+                  },
+                  "required": ["balance", "iso_ccy"]
+                },
+                "examples": {
+                  "fiat": {
+                    "summary": "P2P fiat balance",
+                    "value": { "balance": "48250.00", "iso_ccy": "INR" }
+                  },
+                  "crypto": {
+                    "summary": "Crypto transit balance",
+                    "value": { "balance": "312.50", "iso_ccy": "USDT" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" }
+        },
+        "security": [{ "Bearer": [] }]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "Bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "access token",
+        "description": "Bearer token. Obtain your API key from your NominalPayments manager."
+      }
+    },
+    "schemas": {
+      "PaymentCreateSchema": {
+        "type": "object",
+        "description": "Unified payment creation request for both fund and disburse.",
+        "required": ["value", "notify_endpoint", "iso_ccy", "client_ref", "tx_type", "processing", "user_ref"],
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "Amount as a decimal string (e.g. `\"1500.00\"`)",
+            "example": "1500.00"
+          },
+          "notify_endpoint": {
+            "type": "string",
+            "description": "URL to receive webhook callbacks on payment state changes",
+            "example": "https://merchant.example.com/webhook"
+          },
+          "iso_ccy": {
+            "type": "string",
+            "description": "ISO 4217 currency code (uppercased automatically)",
+            "minLength": 3,
+            "maxLength": 3,
+            "example": "INR"
+          },
+          "client_ref": {
+            "type": "string",
+            "description": "Idempotency key — unique per payment (5–64 chars)",
+            "minLength": 5,
+            "maxLength": 64,
+            "example": "order-20240513-001"
+          },
+          "tx_type": {
+            "type": "string",
+            "enum": ["fund", "disburse"],
+            "description": "`fund` = Pay-In (receive funds); `disburse` = Pay-Out (send funds)",
+            "example": "fund"
+          },
+          "processing": {
+            "type": "string",
+            "enum": ["direct", "card"],
+            "description": "`direct` = P2P / UPI / IMPS; `card` = card acquiring or card payout",
+            "example": "direct"
+          },
+          "channel_code": {
+            "type": "string",
+            "enum": ["upi", "upi_intent", "imps", "flash", "turbo"],
+            "description": "Payment channel. Required for `processing: direct`.\n- `upi` — standard UPI\n- `upi_intent` — UPI Intent deep-link\n- `imps` — IMPS bank transfer (disburse only)\n- `flash` — UPI via Paytm\n- `turbo` — UPI via PhonePe",
+            "example": "upi"
+          },
+          "user_ref": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Your internal user/payer identifier",
+            "example": "user_9812345678"
+          },
+          "user_name": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Display name of the payer",
+            "example": "Rahul Sharma"
+          },
+          "landing_url": {
+            "type": "string",
+            "description": "Return URL after payment (required for `tx_type: fund` unless `api_only: true`)",
+            "example": "https://merchant.example.com/return"
+          },
+          "api_only": {
+            "type": "boolean",
+            "description": "Headless mode — no redirect. Payment credentials returned in `transfer_details` instead of `checkout_url`.",
+            "example": false
+          },
+          "fund_details": {
+            "$ref": "#/components/schemas/FundDetailsSchema"
+          },
+          "payout_details": {
+            "$ref": "#/components/schemas/PayoutDetailsSchema"
+          },
+          "traffic_type": {
+            "type": "string",
+            "enum": ["FTD", "STD", "VIP"],
+            "description": "Traffic classification for routing",
+            "example": "FTD"
+          }
+        }
+      },
+      "FundDetailsSchema": {
+        "type": "object",
+        "description": "Optional payer credentials for Pay-In. Which sub-fields are used depends on the channel.",
+        "properties": {
+          "bank_label": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Human-readable bank name (e.g. `HDFC Bank`)",
+            "example": "HDFC Bank"
+          },
+          "payer_full_name": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Full name of the payer",
+            "example": "Rahul Sharma"
+          },
+          "upi_id": {
+            "type": "string",
+            "description": "Payer's UPI VPA (format: `name@bank`)",
+            "pattern": "^[a-zA-Z0-9_.\\-]{1,128}@[a-zA-Z0-9]{1,128}$",
+            "example": "rahul@ybl"
+          },
+          "card_info": {
+            "$ref": "#/components/schemas/CardInfoSchema"
+          }
+        }
+      },
+      "CardInfoSchema": {
+        "type": "object",
+        "description": "Card details for acquiring Pay-In",
+        "required": ["card_number", "expiry_month", "expiry_year", "cvv", "holder_name"],
+        "properties": {
+          "card_number": {
+            "type": "string",
+            "description": "16-digit PAN",
+            "example": "4111111111111111"
+          },
+          "expiry_month": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12,
+            "description": "Expiry month (1–12)",
+            "example": 12
+          },
+          "expiry_year": {
+            "type": "integer",
+            "description": "4-digit expiry year",
+            "example": 2027
+          },
+          "cvv": {
+            "type": "string",
+            "description": "CVV / CVC (3–4 digits)",
+            "example": "123"
+          },
+          "holder_name": {
+            "type": "string",
+            "description": "Cardholder name as printed on the card",
+            "example": "RAHUL SHARMA"
+          }
+        }
+      },
+      "PayoutDetailsSchema": {
+        "type": "object",
+        "description": "Recipient credentials for Pay-Out. Use the fields relevant to the chosen channel.",
+        "properties": {
+          "upi_id": {
+            "type": "string",
+            "description": "Recipient UPI VPA (required for `channel_code: upi`)",
+            "pattern": "^[a-zA-Z0-9_.\\-]{1,128}@[a-zA-Z0-9]{1,128}$",
+            "example": "rahul@ybl"
+          },
+          "acct_number": {
+            "type": "string",
+            "minLength": 9,
+            "maxLength": 32,
+            "description": "Bank account number (required for `channel_code: imps`)",
+            "example": "012345678901"
+          },
+          "bank_code": {
+            "type": "string",
+            "description": "IFSC code (required when `acct_number` is provided; format: `XXXX0XXXXXX`)",
+            "pattern": "^[a-zA-Z]{4}0[a-zA-Z0-9]{6}$",
+            "example": "HDFC0002060"
+          },
+          "card_num": {
+            "type": "string",
+            "description": "Recipient card number for card payouts (Luhn-valid, spaces/dashes stripped automatically)",
+            "example": "4111111111111111"
+          },
+          "recipient_name": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Required when any of `upi_id`, `acct_number`, or `card_num` is provided",
+            "example": "Rahul Sharma"
+          },
+          "intl_acct": {
+            "type": "string",
+            "description": "International account identifier (for cross-border payouts)",
+            "example": "GB29NWBK60161331926819"
+          },
+          "tax_num": {
+            "type": "string",
+            "description": "Tax identification number of the recipient (if required by jurisdiction)",
+            "example": "ABCDE1234F"
+          }
+        }
+      },
+      "PaymentStateSchema": {
+        "type": "object",
+        "description": "Full payment state — returned on creation, status polling, and webhooks.",
+        "required": ["ref_num", "client_ref", "outcome", "charge_amount", "iso_currency", "opened_at"],
+        "properties": {
+          "ref_num": {
+            "type": "string",
+            "description": "NominalPayments payment ID",
+            "example": "pay_in_01HX..."
+          },
+          "channel_type": {
+            "type": "string",
+            "description": "Resolved payment channel (e.g. `upi`, `imps`, `card`)",
+            "example": "upi"
+          },
+          "checkout_url": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL to redirect payer to (null for headless / api_only mode, and for disburse)",
+            "example": "https://api.nominalpayments.app/payments/pay_in_01HX..."
+          },
+          "client_ref": {
+            "type": "string",
+            "description": "Your idempotency key",
+            "example": "order-20240513-001"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": ["pending", "settled", "settled_partial", "declined", "voided", "disputed", "adjusted"],
+            "description": "Current payment outcome",
+            "example": "pending"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Expiry datetime of the payment window (null if not yet assigned)",
+            "example": "2024-05-13T10:30:00.000Z"
+          },
+          "decline_cause": {
+            "type": "string",
+            "nullable": true,
+            "description": "Human-readable reason for decline (null if not declined)",
+            "example": "Payment expired without confirmation"
+          },
+          "charge_amount": {
+            "type": "string",
+            "description": "Requested amount",
+            "example": "1500.00"
+          },
+          "settled_amount": {
+            "type": "string",
+            "nullable": true,
+            "description": "Actual credited amount after fees (null until settled)",
+            "example": "1455.00"
+          },
+          "iso_currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code",
+            "example": "INR"
+          },
+          "transfer_details": {
+            "type": "object",
+            "nullable": true,
+            "description": "Payment credentials for headless / API-only mode (e.g. UPI VPA, QR data). Null for widget mode.",
+            "example": { "upi_account": "merchant@ybl" }
+          },
+          "opened_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Payment creation datetime",
+            "example": "2024-05-13T10:00:00.000Z"
+          },
+          "closed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Payment completion datetime (null while still pending)",
+            "example": "2024-05-13T10:12:34.000Z"
+          }
+        }
+      },
+      "ErrorSchema": {
+        "type": "object",
+        "required": ["result", "issue"],
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": ["fail"],
+            "example": "fail"
+          },
+          "issue": {
+            "type": "object",
+            "required": ["category", "text"],
+            "properties": {
+              "category": {
+                "type": "string",
+                "enum": ["bad_request", "payment_issue", "auth_issue", "server_issue"],
+                "description": "Error category",
+                "example": "bad_request"
+              },
+              "text": {
+                "type": "string",
+                "description": "Human-readable error description",
+                "example": "value must be a valid money amount"
+              },
+              "errors": {
+                "type": "object",
+                "description": "Per-field validation errors",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "example": { "value": ["value must be a valid money amount"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "requestBodies": {
+      "WebhookPaymentStateBody": {
+        "required": false,
+        "description": "Payment state payload sent to `notify_endpoint`",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/PaymentStateSchema" }
+          }
+        }
+      }
+    }
+  },
+  "security": [{ "Bearer": [] }]
+}
