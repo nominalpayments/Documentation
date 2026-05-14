@@ -53,11 +53,53 @@
                 "$ref": "#/components/schemas/PaymentCreatePayInSchema"
               },
               "examples": {
-                "UPI (widget)": {
-                  "summary": "Standard UPI with redirect",
+                "UPI Intent": {
+                  "summary": "UPI Intent",
                   "value": {
                     "value": "1000.00",
-                    "notify_endpoint": "https://merchant.example.com/webhook",
+                    "notify_endpoint": "https://webhook.site/your-id",
+                    "iso_ccy": "INR",
+                    "client_ref": "payin-intent-004",
+                    "tx_type": "fund",
+                    "processing": "direct",
+                    "channel_code": "upi_intent",
+                    "user_ref": "user_789",
+                    "landing_url": "https://example.com"
+                  }
+                },
+                "flash — UPI Intent via Paytm": {
+                  "summary": "flash — UPI Intent via Paytm",
+                  "value": {
+                    "value": "1000.00",
+                    "notify_endpoint": "https://webhook.site/your-id",
+                    "iso_ccy": "INR",
+                    "client_ref": "payin-flash-001",
+                    "tx_type": "fund",
+                    "processing": "direct",
+                    "channel_code": "flash",
+                    "user_ref": "user_789",
+                    "landing_url": "https://example.com"
+                  }
+                },
+                "turbo — UPI Intent via PhonePe": {
+                  "summary": "turbo — UPI Intent via PhonePe",
+                  "value": {
+                    "value": "1000.00",
+                    "notify_endpoint": "https://webhook.site/your-id",
+                    "iso_ccy": "INR",
+                    "client_ref": "payin-turbo-001",
+                    "tx_type": "fund",
+                    "processing": "direct",
+                    "channel_code": "turbo",
+                    "user_ref": "user_789",
+                    "landing_url": "https://example.com"
+                  }
+                },
+                "UPI widget": {
+                  "summary": "UPI widget",
+                  "value": {
+                    "value": "1000.00",
+                    "notify_endpoint": "https://webhook.site/your-id",
                     "iso_ccy": "INR",
                     "client_ref": "prod-order-unique-id-001",
                     "tx_type": "fund",
@@ -67,67 +109,11 @@
                     "landing_url": "https://example.com"
                   }
                 },
-                "UPI Intent (Paytm)": {
-                  "summary": "UPI Intent deep-link — Paytm",
+                "UPI H2H (api_only)": {
+                  "summary": "UPI H2H (api_only)",
                   "value": {
                     "value": "1000.00",
-                    "notify_endpoint": "https://merchant.example.com/webhook",
-                    "iso_ccy": "INR",
-                    "client_ref": "payin-paytm-intent-016",
-                    "tx_type": "fund",
-                    "processing": "direct",
-                    "channel_code": "upi_intent",
-                    "user_ref": "user_paytm_01",
-                    "landing_url": "https://example.com"
-                  }
-                },
-                "UPI Intent (PhonePe)": {
-                  "summary": "UPI Intent deep-link — PhonePe",
-                  "value": {
-                    "value": "500.00",
-                    "notify_endpoint": "https://merchant.example.com/webhook",
-                    "iso_ccy": "INR",
-                    "client_ref": "payin-phonepe-test-017",
-                    "tx_type": "fund",
-                    "processing": "direct",
-                    "channel_code": "upi_intent",
-                    "user_ref": "user_phonepe_01",
-                    "landing_url": "https://example.com"
-                  }
-                },
-                "flash (UPI Paytm)": {
-                  "summary": "UPI Intent via Paytm (flash)",
-                  "value": {
-                    "value": "500.00",
-                    "notify_endpoint": "https://merchant.example.com/webhook",
-                    "iso_ccy": "INR",
-                    "client_ref": "order-flash-001",
-                    "tx_type": "fund",
-                    "processing": "direct",
-                    "channel_code": "flash",
-                    "user_ref": "user_9812345678",
-                    "landing_url": "https://merchant.example.com/return"
-                  }
-                },
-                "turbo (UPI PhonePe)": {
-                  "summary": "UPI Intent via PhonePe (turbo)",
-                  "value": {
-                    "value": "500.00",
-                    "notify_endpoint": "https://merchant.example.com/webhook",
-                    "iso_ccy": "INR",
-                    "client_ref": "order-turbo-001",
-                    "tx_type": "fund",
-                    "processing": "direct",
-                    "channel_code": "turbo",
-                    "user_ref": "user_9812345678",
-                    "landing_url": "https://merchant.example.com/return"
-                  }
-                },
-                "H2H / API-only (headless UPI)": {
-                  "summary": "Headless — UPI VPA + QR returned in transfer_details",
-                  "value": {
-                    "value": "1000.00",
-                    "notify_endpoint": "https://merchant.example.com/webhook",
+                    "notify_endpoint": "https://webhook.site/your-id",
                     "iso_ccy": "INR",
                     "client_ref": "payin-h2h-upi-001",
                     "tx_type": "fund",
