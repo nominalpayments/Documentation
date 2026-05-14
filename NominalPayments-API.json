@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "NominalPayments",
-    "description": "\n## Quickstart\n\n1. Authenticate: obtain your API key from your NominalPayments manager.\n2. Initiate Payment: POST to `/v1/payments/pay_in` with required fields (see example below).\n3. Redirect User: for widget-based payments, redirect to the `checkout_url` in the response.\n4. Listen for Webhooks: implement an endpoint to receive callbacks for payment state changes (see callbacks below).\n5. Check Status: optionally poll `/v1/payments/{ref_num}/status` for real-time status.\n\nExample (Widget, UPI):\n```json\n{\n  \"value\": \"1000.00\",\n  \"iso_ccy\": \"INR\",\n  \"client_ref\": \"order-001\",\n  \"notify_endpoint\": \"https://merchant.example.com/webhook\",\n  \"landing_url\": \"https://merchant.example.com/return\",\n  \"user_ref\": \"user_9812345678\",\n  \"tx_type\": \"fund\",\n  \"processing\": \"direct\",\n  \"channel_code\": \"upi\"\n}\n```\n\n---\n\n## Introduction\n\nNominalPayments processes Pay-In (deposit) and Pay-Out (withdrawal) transactions for the Indian market.\n\nSupported rails: UPI, UPI Intent (Paytm, PhonePe), IMPS, card acquiring.\n\n---\n\n## Pay-In modes\n\n**Widget** (default): redirect the payer to `checkout_url` returned in the response.\n\n**H2H / API-only** (headless): set `api_only: true` — no redirect. Payment credentials (UPI VPA + QR code) are returned directly in `transfer_details`.\n\n---\n\n## Pay-In channels\n\n| `processing` | `channel_code` | Description |\n|---|---|---|\n| `direct` | `upi` | Standard UPI (widget or H2H) |\n| `direct` | `upi_intent` | UPI Intent deep-link (Paytm / PhonePe) |\n| `direct` | `flash` | UPI via Paytm |\n| `direct` | `turbo` | UPI via PhonePe |\n| `card` | — | Card acquiring |\n\n---\n\n## Pay-Out channels\n\n| `processing` | `channel_code` | Description |\n|---|---|---|\n| `direct` | `upi` | Payout to UPI VPA |\n| `direct` | `imps` | Payout via IMPS (bank account + IFSC) |\n| `card` | — | Payout to card number |\n\n---\n\n## Technical limits (INR)\n\n| Parameter | Value |\n|---|---|\n| Currency | INR |\n| Min deposit | 300.00 INR |\n| Max deposit | 50,000.00 INR |\n\n---\n\n## Webhook signature verification\n\nEvery webhook sent to your `notify_endpoint` includes an `X-Signature` header — an HMAC-SHA256 or RSA signature of the raw request body. Obtain the verification key from your manager.\n\nNode.js example (HMAC-SHA256):\n```js\nimport { createHmac, timingSafeEqual } from 'node:crypto';\n\nfunction verifyWebhook(rawBody, signatureHeader, secret) {\n  const expected = createHmac('sha256', secret)\n    .update(rawBody)\n    .digest('hex');\n  return timingSafeEqual(\n    Buffer.from(expected),\n    Buffer.from(signatureHeader)\n  );\n}\n```\n\nReturn **HTTP 200** to acknowledge. Any other status code triggers retries for up to 24 hours.\n\n---\n\n## Payment outcome values\n\n| `outcome` | Meaning |\n|---|---|\n| `pending` | In progress |\n| `settled` | Successfully completed |\n| `settled_partial` | Partially settled |\n| `declined` | Declined or expired |\n| `voided` | Reversed / cancelled |\n| `disputed` | Chargeback initiated |\n| `adjusted` | Amount adjusted |\n\n---\n\n## Error format\n\nAll errors return a unified JSON body:\n```json\n{\n  \"result\": \"fail\",\n  \"issue\": {\n    \"category\": \"bad_request\",\n    \"text\": \"value must be a valid money amount\",\n    \"errors\": {\n      \"value\": [\"value must be a valid money amount\"]\n    }\n  }\n}\n```\n\n| Category | HTTP | Meaning |\n|---|---|---|\n| `bad_request` | 400 | Validation error |\n| `payment_issue` | 400/409/476 | Business error (limit, duplicate, no route…) |\n| `auth_issue` | 401 | Token not found or invalid |\n| `server_issue` | 500 | Internal error |\n",
+    "description": "\n## Quickstart\n\n1. Authenticate: obtain your API key from your NominalPayments manager.\n2. Initiate Payment: POST to `/v1/payments/pay_in` with required fields (see example below).\n3. Redirect User: for widget-based payments, redirect to the `checkout_url` in the response.\n4. Listen for Webhooks: implement an endpoint to receive callbacks for payment state changes (see callbacks below).\n5. Check Status: optionally poll `/v1/payments/{ref_num}/status` for real-time status.\n\nExample (Widget, UPI):\n```json\n{\n  \"value\": \"1000.00\",\n  \"iso_ccy\": \"INR\",\n  \"client_ref\": \"order-001\",\n  \"notify_endpoint\": \"https://merchant.example.com/webhook\",\n  \"landing_url\": \"https://merchant.example.com/return\",\n  \"user_ref\": \"user_9812345678\",\n  \"tx_type\": \"fund\",\n  \"processing\": \"direct\",\n  \"channel_code\": \"upi\"\n}\n```\n\n---\n\n## Introduction\n\nNominalPayments processes Pay-In (deposit) and Pay-Out (withdrawal) transactions for the Indian market.\n\nSupported rails: UPI, UPI Intent (Paytm, PhonePe), IMPS, card acquiring.\n\n---\n\n## Pay-In modes\n\n**Widget** (default): redirect the payer to `checkout_url` returned in the response.\n\n**H2H / API-only** (headless): set `api_only: true` — no redirect. Payment credentials (UPI VPA + QR code) are returned directly in `transfer_details`.\n\n---\n\n## Pay-In channels\n\n| `processing` | `channel_code` | Description |\n|---|---|---|\n| `direct` | `upi` | Standard UPI (widget or H2H) |\n| `direct` | `upi_intent` | UPI Intent deep-link (Paytm / PhonePe) |\n| `direct` | `flash` | UPI via Paytm |\n| `direct` | `turbo` | UPI via PhonePe |\n| `card` | — | Card acquiring |\n\n---\n\n## Pay-Out channels\n\n| `processing` | `channel_code` | Description |\n|---|---|---|\n| `direct` | `upi` | Payout to UPI VPA |\n| `direct` | `imps` | Payout via IMPS (bank account + IFSC) |\n\n---\n\n## Technical limits (INR)\n\n| Parameter | Value |\n|---|---|\n| Currency | INR |\n| Min deposit | 300.00 INR |\n| Max deposit | 50,000.00 INR |\n\n---\n\n## Webhook signature verification\n\nEvery webhook sent to your `notify_endpoint` includes an `X-Signature` header — an HMAC-SHA256 or RSA signature of the raw request body. Obtain the verification key from your manager.\n\nNode.js example (HMAC-SHA256):\n```js\nimport { createHmac, timingSafeEqual } from 'node:crypto';\n\nfunction verifyWebhook(rawBody, signatureHeader, secret) {\n  const expected = createHmac('sha256', secret)\n    .update(rawBody)\n    .digest('hex');\n  return timingSafeEqual(\n    Buffer.from(expected),\n    Buffer.from(signatureHeader)\n  );\n}\n```\n\nReturn **HTTP 200** to acknowledge. Any other status code triggers retries for up to 24 hours.\n\n---\n\n## Payment outcome values\n\n| `outcome` | Meaning |\n|---|---|\n| `pending` | In progress |\n| `settled` | Successfully completed |\n| `settled_partial` | Partially settled |\n| `declined` | Declined or expired |\n| `voided` | Reversed / cancelled |\n| `disputed` | Chargeback initiated |\n| `adjusted` | Amount adjusted |\n\n---\n\n## Error format\n\nAll errors return a unified JSON body:\n```json\n{\n  \"result\": \"fail\",\n  \"issue\": {\n    \"category\": \"bad_request\",\n    \"text\": \"value must be a valid money amount\",\n    \"errors\": {\n      \"value\": [\"value must be a valid money amount\"]\n    }\n  }\n}\n```\n\n| Category | HTTP | Meaning |\n|---|---|---|\n| `bad_request` | 400 | Validation error |\n| `payment_issue` | 400/409/476 | Business error (limit, duplicate, no route…) |\n| `auth_issue` | 401 | Token not found or invalid |\n| `server_issue` | 500 | Internal error |\n",
     "contact": {
       "url": "https://nominalpayments.app"
     },
@@ -96,7 +96,7 @@
                   }
                 },
                 "flash (UPI Paytm)": {
-                  "summary": "UPI via Paytm (flash channel)",
+                  "summary": "UPI Intent via Paytm (flash)",
                   "value": {
                     "value": "500.00",
                     "notify_endpoint": "https://merchant.example.com/webhook",
@@ -110,7 +110,7 @@
                   }
                 },
                 "turbo (UPI PhonePe)": {
-                  "summary": "UPI via PhonePe (turbo channel)",
+                  "summary": "UPI Intent via PhonePe (turbo)",
                   "value": {
                     "value": "500.00",
                     "notify_endpoint": "https://merchant.example.com/webhook",
@@ -135,28 +135,6 @@
                     "channel_code": "upi",
                     "user_ref": "user_h2h_01",
                     "api_only": true
-                  }
-                },
-                "Card acquiring": {
-                  "summary": "Card acquiring Pay-In",
-                  "value": {
-                    "value": "1500.00",
-                    "notify_endpoint": "https://merchant.example.com/webhook",
-                    "iso_ccy": "INR",
-                    "client_ref": "payin-card-fixed-008",
-                    "tx_type": "fund",
-                    "processing": "card",
-                    "user_ref": "user_789",
-                    "landing_url": "https://example.com",
-                    "fund_details": {
-                      "card_info": {
-                        "card_number": "4111111111111111",
-                        "expiry_month": 12,
-                        "expiry_year": 2026,
-                        "cvv": "123",
-                        "holder_name": "IVAN TESTOV"
-                      }
-                    }
                   }
                 }
               }
@@ -471,7 +449,7 @@
     "/payments/pay_out": {
       "post": {
         "summary": "Create pay out payment",
-        "description": "Creates a Pay-Out (withdrawal) — moves funds from the merchant to a recipient.\n\nUse `payout_details` with the fields appropriate for the chosen channel:\n- **UPI**: `upi_id` + `recipient_name`\n- **IMPS**: `acct_number` + `bank_code` (IFSC) + `recipient_name`\n- **Card**: `card_num` + `recipient_name`\n\n`client_ref` is your idempotency key (5–64 chars). Reusing the same key within 1 second returns the same payment; after 1 second returns `409`.",
+        "description": "Creates a Pay-Out (withdrawal) — moves funds from the merchant to a recipient.\n\nUse `payout_details` with the fields appropriate for the chosen channel:\n- **UPI**: `upi_id` + `recipient_name`\n- **IMPS**: `acct_number` + `bank_code` (IFSC) + `recipient_name`\n\n`client_ref` is your idempotency key (5–64 chars). Reusing the same key within 1 second returns the same payment; after 1 second returns `409`.",
         "operationId": "createPayOut",
         "tags": [
           "PayOut"
@@ -516,22 +494,6 @@
                       "acct_number": "987654321098",
                       "bank_code": "HDFC0002060",
                       "recipient_name": "Ivan Testov"
-                    }
-                  }
-                },
-                "Pay-Out card": {
-                  "summary": "Payout to card number",
-                  "value": {
-                    "value": "2500.00",
-                    "notify_endpoint": "https://merchant.example.com/webhook",
-                    "iso_ccy": "INR",
-                    "client_ref": "payout-card-003",
-                    "tx_type": "disburse",
-                    "processing": "card",
-                    "user_ref": "user_id_456",
-                    "payout_details": {
-                      "card_num": "4111111111111111",
-                      "recipient_name": "Rahul Sharma"
                     }
                   }
                 }
@@ -1131,10 +1093,9 @@
           "processing": {
             "type": "string",
             "enum": [
-              "direct",
-              "card"
+              "direct"
             ],
-            "description": "`direct` = UPI/IMPS; `card` = card acquiring",
+            "description": "Must be `direct` for Pay-In",
             "example": "direct"
           },
           "channel_code": {
@@ -1145,7 +1106,7 @@
               "flash",
               "turbo"
             ],
-            "description": "Payment channel (required for `processing: direct`).\n- `upi` — standard UPI\n- `upi_intent` — UPI Intent deep-link\n- `flash` — UPI via Paytm\n- `turbo` — UPI via PhonePe",
+            "description": "Payment channel (required).\n- `upi` — Standard UPI (widget or H2H)\n- `upi_intent` — UPI Intent deep-link (Paytm / PhonePe)\n- `flash` — UPI Intent via Paytm\n- `turbo` — UPI Intent via PhonePe",
             "example": "upi"
           },
           "user_ref": {
@@ -1172,7 +1133,7 @@
           },
           "fund_details": {
             "type": "object",
-            "description": "Optional payer credentials. Required for card acquiring (`processing: card`).",
+            "description": "Optional payer credentials.",
             "properties": {
               "bank_label": {
                 "type": "string",
@@ -1189,46 +1150,6 @@
                 "description": "Payer UPI VPA (format: name@bank)",
                 "pattern": "^[a-zA-Z0-9_.\\-]{1,128}@[a-zA-Z0-9]{1,128}$",
                 "example": "rahul@ybl"
-              },
-              "card_info": {
-                "type": "object",
-                "description": "Card details for card acquiring. All fields required when `processing: card`.",
-                "required": [
-                  "card_number",
-                  "expiry_month",
-                  "expiry_year",
-                  "cvv",
-                  "holder_name"
-                ],
-                "properties": {
-                  "card_number": {
-                    "type": "string",
-                    "description": "16-digit PAN",
-                    "example": "4111111111111111"
-                  },
-                  "expiry_month": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 12,
-                    "description": "Expiry month (1–12)",
-                    "example": 12
-                  },
-                  "expiry_year": {
-                    "type": "integer",
-                    "description": "4-digit expiry year",
-                    "example": 2026
-                  },
-                  "cvv": {
-                    "type": "string",
-                    "description": "CVV / CVC (3–4 digits). Field name must be exactly `cvv`.",
-                    "example": "123"
-                  },
-                  "holder_name": {
-                    "type": "string",
-                    "description": "Cardholder name as on card",
-                    "example": "IVAN TESTOV"
-                  }
-                }
               }
             }
           },
@@ -1293,10 +1214,9 @@
           "processing": {
             "type": "string",
             "enum": [
-              "direct",
-              "card"
+              "direct"
             ],
-            "description": "`direct` = UPI/IMPS; `card` = card payout",
+            "description": "Must be `direct` for Pay-Out",
             "example": "direct"
           },
           "channel_code": {
@@ -1358,25 +1278,6 @@
                     "description": "IFSC code (format: XXXX0XXXXXX)",
                     "pattern": "^[a-zA-Z]{4}0[a-zA-Z0-9]{6}$",
                     "example": "HDFC0002060"
-                  },
-                  "recipient_name": {
-                    "type": "string",
-                    "description": "Recipient full name",
-                    "example": "Rahul Sharma"
-                  }
-                }
-              },
-              {
-                "title": "Card payout",
-                "required": [
-                  "card_num",
-                  "recipient_name"
-                ],
-                "properties": {
-                  "card_num": {
-                    "type": "string",
-                    "description": "Recipient card number (Luhn-valid; spaces/dashes stripped automatically)",
-                    "example": "4111111111111111"
                   },
                   "recipient_name": {
                     "type": "string",
