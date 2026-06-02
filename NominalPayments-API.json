@@ -64,7 +64,8 @@
                     "processing": "direct",
                     "channel_code": "upi_intent",
                     "user_ref": "user_789",
-                    "landing_url": "https://example.com"
+                    "landing_url": "https://example.com",
+                    "traffic_type": "STD"
                   }
                 },
                 "flash — UPI Intent via Paytm": {
@@ -78,7 +79,8 @@
                     "processing": "direct",
                     "channel_code": "flash",
                     "user_ref": "user_789",
-                    "landing_url": "https://example.com"
+                    "landing_url": "https://example.com",
+                    "traffic_type": "STD"
                   }
                 },
                 "turbo — UPI Intent via PhonePe": {
@@ -92,7 +94,8 @@
                     "processing": "direct",
                     "channel_code": "turbo",
                     "user_ref": "user_789",
-                    "landing_url": "https://example.com"
+                    "landing_url": "https://example.com",
+                    "traffic_type": "STD"
                   }
                 },
                 "UPI widget": {
@@ -106,7 +109,8 @@
                     "processing": "direct",
                     "channel_code": "upi",
                     "user_ref": "user_id_999",
-                    "landing_url": "https://example.com"
+                    "landing_url": "https://example.com",
+                    "traffic_type": "STD"
                   }
                 },
                 "UPI H2H (api_only)": {
@@ -120,7 +124,8 @@
                     "processing": "direct",
                     "channel_code": "upi",
                     "user_ref": "user_h2h_01",
-                    "api_only": true
+                    "api_only": true,
+                    "traffic_type": "STD"
                   }
                 }
               }
@@ -1041,7 +1046,8 @@
           "client_ref",
           "tx_type",
           "processing",
-          "user_ref"
+          "user_ref",
+          "traffic_type"
         ],
         "properties": {
           "value": {
